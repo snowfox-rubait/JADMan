@@ -1,0 +1,39 @@
+# Maintainer: snowfox-rubait <266122632+snowfox-rubait@users.noreply.github.com>
+pkgname=jadman-git
+pkgver=r1.89df437
+pkgrel=1
+pkgdesc="Advanced Browser-Integrated Download Manager daemon and TUI"
+arch=('x86_64')
+url="https://github.com/snowfox-rubait/JADMan"
+license=('GPL3')
+depends=('openssl' 'aria2' 'yt-dlp' 'ffmpeg')
+makedepends=('git' 'cargo')
+provides=('jadman' 'jadm-daemon' 'jadm-tui')
+conflicts=('jadman')
+source=('git+https://github.com/snowfox-rubait/JADMan.git')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/JADMan"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$srcdir/JADMan"
+  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+  cd "$srcdir/JADMan"
+  CARGO_TARGET_DIR=target cargo build --frozen --release
+}
+
+package() {
+  cd "$srcdir/JADMan"
+  install -Dm755 target/release/jadm-daemon "$pkgdir/usr/bin/jadm-daemon"
+  install -Dm755 target/release/jadm-tui "$pkgdir/usr/bin/jadm-tui"
+  
+  install -d "$pkgdir/usr/share/jadman/extension"
+  cp -r extension/chrome "$pkgdir/usr/share/jadman/extension/chrome"
+  cp -r extension/firefox "$pkgdir/usr/share/jadman/extension/firefox"
+}

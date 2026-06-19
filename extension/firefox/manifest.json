@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "jadm@snowfox.com"
+    }
+  },
+  "name": "JADMan Integration (Firefox)",
+  "version": "1.0.0",
+  "description": "Intercepts downloads and sends them to JADMan daemon.",
+  "permissions": [
+    "downloads",
+    "storage",
+    "webRequest",
+    "contextMenus",
+    "scripting",
+    "cookies",
+    "debugger",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "JADMan Media Grabber",
+    "default_popup": "menu.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["siphon_hook.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

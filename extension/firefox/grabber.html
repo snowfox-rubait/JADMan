@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Choose JADManan Batch Links</title>
+  <style>
+    body {
+      background: #121212;
+      color: #e0e0e0;
+      font-family: sans-serif;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .header {
+      padding: 15px;
+      background: #1e1e1e;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .filter-bar {
+      padding: 10px 15px;
+      background: #1a1a1a;
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      background: #333;
+      border: 1px solid #444;
+      color: white;
+      padding: 5px 10px;
+      border-radius: 4px;
+      flex: 1;
+    }
+    .list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .link-item {
+      padding: 8px 15px;
+      border-bottom: 1px solid #252525;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .link-item:hover {
+      background: #222;
+    }
+    .link-url {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      color: #aaa;
+    }
+    .link-name {
+      font-weight: bold;
+      width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .footer {
+      padding: 15px;
+      background: #1e1e1e;
+      border-top: 1px solid #333;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-primary {
+      background: #ff0000;
+      color: white;
+    }
+    .btn-secondary {
+      background: #444;
+      color: white;
+    }
+    #stats {
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span>Batch Download Grabber</span>
+    <div id="stats">Found 0 links</div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" id="extensionFilter" placeholder="Filter by extension (e.g. .mp3, .pdf)">
+    <button class="btn-secondary" id="selectAll">Select All</button>
+    <button class="btn-secondary" id="selectNone">None</button>
+  </div>
+  <div class="list-container" id="linkList">
+    <!-- Links will be injected here -->
+  </div>
+  <div class="footer">
+    <button class="btn-secondary" id="cancelBtn">Cancel</button>
+    <button class="btn-primary" id="downloadBtn">Download Selected</button>
+  </div>
+  <script src="grabber.js"></script>
+</body>
+</html>

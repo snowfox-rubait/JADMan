@@ -1,0 +1,126 @@
+use anyhow::Result;
+use jadm_common::protocol::{Request, Response};
+use std::io::{self, Read, Write};
+use tokio::net::UnixStream;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use directories::ProjectDirs;
+
+/// Reads a 4-byte length prefix from stdin, then reads the JSON message.
+fn read_native_message() -> Result<Option<Vec<u8>>> {
+    let mut length_bytes = [0u8; 4];
+    let mut stdin = io::stdin();
+    match stdin.read_exact(&mut length_bytes) {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+        Err(e) => return Err(e.into()),
+    }
+
+    let length = u32::from_ne_bytes(length_bytes) as usize;
+    if length > 10 * 1024 * 1024 { // 10MB limit
+        return Err(anyhow::anyhow!("Message too large"));
+    }
+
+    let mut message_bytes = vec![0u8; length];
+    stdin.read_exact(&mut message_bytes)?;
+    Ok(Some(message_bytes))
+}
+
+/// Writes a JSON message to stdout prefixed by a 4-byte length.
+fn write_native_message(message: &[u8]) -> Result<()> {
+    let length = message.len() as u32;
+    let mut stdout = io::stdout();
+    stdout.write_all(&length.to_ne_bytes())?;
+    stdout.write_all(message)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+pub async fn run_native_host() -> Result<()> {
+    // Determine the path to the Unix IPC socket
+    let proj_dirs = ProjectDirs::from("com", "jadm", "jadm")
+        .ok_or_else(|| anyhow::anyhow!("Could not determine project directories"))?;
+    let socket_path = proj_dirs.runtime_dir()
+        .map(|d| d.join("jadm.sock"))
+        .unwrap_or_else(|| std::path::PathBuf::from(format!("/run/user/{}/jadm/jadm.sock", unsafe { libc::geteuid() })));
+
+    // Connect to the daemon
+    let mut stream = UnixStream::connect(&socket_path).await
+        .map_err(|e| anyhow::anyhow!("Failed to connect to JADMan daemon: {}", e))?;
+    
+    // We split the Unix stream to handle read/write simultaneously
+    let (reader, mut writer) = stream.split();
+    let mut unix_reader = BufReader::new(reader).lines();
+
+    // Native messaging loop
+    loop {
+        // Read a message from Chrome
+        let msg_bytes = match tokio::task::spawn_blocking(read_native_message).await?? {
+            Some(bytes) => bytes,
+            None => break, // EOF, Chrome disconnected
+        };
+
+        // Forward to the Unix socket (append newline)
+        let mut to_send = msg_bytes.clone();
+        to_send.push(b'\n');
+        writer.write_all(&to_send).await?;
+
+        // Wait for response from the Unix socket
+        if let Some(line) = unix_reader.next_line().await? {
+            // Forward response back to Chrome
+            write_native_message(line.as_bytes())?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn install_native_manifest() -> Result<()> {
+    let home = std::env::var("HOME")?;
+    let chrome_dir = std::path::PathBuf::from(home.clone()).join(".config/google-chrome/NativeMessagingHosts");
+    let chromium_dir = std::path::PathBuf::from(home.clone()).join(".config/chromium/NativeMessagingHosts");
+    let brave_dir = std::path::PathBuf::from(home.clone()).join(".config/BraveSoftware/Brave-Browser/NativeMessagingHosts");
+    let firefox_dir = std::path::PathBuf::from(home).join(".mozilla/native-messaging-hosts");
+
+    let exe_path = std::env::current_exe()?;
+
+    // Chrome/Chromium/Brave manifest format (uses allowed_origins)
+    let chrome_manifest = serde_json::json!({
+        "name": "com.jadm.jadm",
+        "description": "JADMan Native Messaging Host",
+        "path": exe_path.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [
+            "chrome-extension://ipiefkjcicogeoepimgebinafoelhbhd/"
+        ]
+    });
+
+    let chrome_manifest_str = serde_json::to_string_pretty(&chrome_manifest)?;
+
+    for dir in &[chrome_dir, chromium_dir, brave_dir] {
+        if let Ok(_) = std::fs::create_dir_all(dir) {
+            let manifest_path = dir.join("com.jadm.jadm.json");
+            let _ = std::fs::write(manifest_path, &chrome_manifest_str);
+        }
+    }
+
+    // Firefox manifest format (uses allowed_extensions)
+    let firefox_manifest = serde_json::json!({
+        "name": "com.jadm.jadm",
+        "description": "JADMan Native Messaging Host",
+        "path": exe_path.to_string_lossy(),
+        "type": "stdio",
+        "allowed_extensions": [
+            "jadm@snowfox.com"
+        ]
+    });
+
+    let firefox_manifest_str = serde_json::to_string_pretty(&firefox_manifest)?;
+
+    if let Ok(_) = std::fs::create_dir_all(&firefox_dir) {
+        let manifest_path = firefox_dir.join("com.jadm.jadm.json");
+        let _ = std::fs::write(manifest_path, &firefox_manifest_str);
+    }
+
+    println!("Native messaging manifest installed to Chrome/Chromium/Brave/Firefox directories.");
+    Ok(())
+}

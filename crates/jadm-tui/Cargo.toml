@@ -1,0 +1,28 @@
+[package]
+name = "jadm-tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+jadm-common = { path = "../jadm-common" }
+tokio = { workspace = true }
+ratatui = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+syntect = { workspace = true }
+crossterm = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+libc = { workspace = true }
+
+[package.metadata.deb]
+name = "jadm-tui"
+maintainer = "snowfox-rubait <266122632+snowfox-rubait@users.noreply.github.com>"
+copyright = "2026, snowfox-rubait"
+extended-description = "JADMan Terminal User Interface provides real-time download queues, interactive preview engines, and control commands."
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/jadm-tui", "usr/bin/jadm-tui", "755"],
+]

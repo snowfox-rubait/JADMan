@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtIGPeljZ2eNHDsIEJty4m8fmZ7jzuXk7XKAhtY0ZO7FUcinU7WcldA4hxFGfEipszWWGwTeiwmMJYaeL7l2I2vJf66ymJMiznB9BeLZDc2AQpqFE7WNPoVHm0Zdcu2Ca2Wnu93C0T8Wypnw9oB0D+nxa6ubIEZ2wG8VfIX8Z+P+cB22YiSixZJXhMnRN+RoDq9LIakPlpNgfMMDkNcB/8JyQ1Qtb/GyjxDgFEbN3V6pgsIuwR5vQviT2hsyuJjlH1ShGPixitUBARLDtxl9VXoJcAu9loNahBxfL9gmwmh5nwIOb6KRFFVgG7vyEmMJrC6jtUaA5SZ++lFFYPr93nwIDAQAB",
+  "name": "JADMan Integration (Chrome)",
+  "version": "1.0.0",
+  "description": "Intercepts downloads and sends them to JADMan daemon.",
+  "permissions": [
+    "downloads",
+    "storage",
+    "webRequest",
+    "contextMenus",
+    "scripting",
+    "cookies",
+    "debugger",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "JADMan Media Grabber",
+    "default_popup": "menu.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["siphon_hook.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

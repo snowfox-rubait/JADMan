@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JADMan Control Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-dark: #0f0f11;
+    --card-bg: #18181c;
+    --primary: #00ff66;
+    --primary-hover: #00cc52;
+    --text-white: #f5f5f7;
+    --text-gray: #86868b;
+    --border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    width: 320px;
+    margin: 0;
+    padding: 16px;
+    background-color: var(--bg-dark);
+    color: var(--text-white);
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  h3 {
+    margin: 0 0 16px 0;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  h3 span {
+    color: var(--primary);
+  }
+
+  /* Mode Selector Styling */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-gray);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+
+  .modes-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .mode-option {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mode-option:hover {
+    border-color: rgba(0, 255, 102, 0.3);
+    background: rgba(24, 24, 28, 0.8);
+  }
+
+  .mode-option.active {
+    border-color: var(--primary);
+    box-shadow: 0 0 12px rgba(0, 255, 102, 0.15);
+  }
+
+  .mode-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mode-name {
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mode-desc {
+    font-size: 11px;
+    color: var(--text-gray);
+    line-height: 1.4;
+    margin-top: 4px;
+  }
+
+  .radio-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--text-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .mode-option.active .radio-dot {
+    border-color: var(--primary);
+  }
+
+  .mode-option.active .radio-dot::after {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--primary);
+    border-radius: 50%;
+  }
+
+  /* Status Panel */
+  .status-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 20px;
+    font-size: 12px;
+  }
+
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .status-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .status-val {
+    font-weight: 600;
+    color: var(--primary);
+  }
+
+  /* Buttons */
+  .btn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  button {
+    font-family: 'Outfit', sans-serif;
+    width: 100%;
+    padding: 10px;
+    font-weight: 600;
+    font-size: 13px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: #000;
+  }
+
+  .btn-primary:hover {
+    background: var(--primary-hover);
+    box-shadow: 0 4px 12px rgba(0, 255, 102, 0.2);
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-white);
+    border: 1px solid var(--border-color);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+</style>
+</head>
+<body>
+  <h3>📥 JADMan <span>Control</span></h3>
+  
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid var(--border-color);">
+    <span id="statusLabel" style="font-weight: 600; font-size: 13px; color: var(--primary); display: flex; align-items: center; gap: 6px;">🟢 JADMan Active</span>
+    <button id="toggleActiveBtn" style="width: auto !important; padding: 6px 12px !important; font-size: 11px !important; background: #ff3333; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: 'Outfit', sans-serif;">Pause</button>
+  </div>
+
+  <div class="section-label">Active Mode</div>
+  <div class="modes-container">
+    <div class="mode-option" id="opt-general">
+      <div class="mode-header">
+        <div class="mode-name">🛡️ General Mode</div>
+        <div class="radio-dot"></div>
+      </div>
+      <div class="mode-desc">Lightweight sniffer. Anonymous requests, zero hooks, standard downloads.</div>
+    </div>
+    
+    <div class="mode-option" id="opt-siphon">
+      <div class="mode-header">
+        <div class="mode-name">⚡ Siphon Mode</div>
+        <div class="radio-dot"></div>
+      </div>
+      <div class="mode-desc">Medium hook. Injects fetch/XHR siphoner and sends session cookies.</div>
+    </div>
+    
+    <div class="mode-option" id="opt-ghost">
+      <div class="mode-header">
+        <div class="mode-name">👻 Ghost Mode</div>
+        <div class="radio-dot"></div>
+      </div>
+      <div class="mode-desc">Maximum evasion. Spoofs browser TLS/HTTP2 headers and hides DOM traces.</div>
+    </div>
+  </div>
+
+  <div class="status-panel">
+    <div class="status-row">
+      <span style="color: var(--text-gray);">Detected Streams:</span>
+      <span id="detected-count" class="status-val">0</span>
+    </div>
+  </div>
+
+  <div class="btn-stack">
+    <button class="btn-primary" id="open-grabber-btn">📂 Open Media Grabber</button>
+    <button class="btn-secondary" id="add-url-btn">🔗 Download Current Page URL</button>
+  </div>
+
+  <script src="menu.js"></script>
+</body>
+</html>
