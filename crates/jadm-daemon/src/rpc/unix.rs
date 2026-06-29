@@ -1,5 +1,9 @@
 use std::sync::Arc;
+#[cfg(unix)]
 use tokio::net::UnixListener;
+#[cfg(not(unix))]
+use tokio::net::TcpListener;
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use jadm_common::protocol::{Request, Response};
 use crate::queue::manager::{QueueManager, AddDownloadParams};
@@ -22,17 +26,26 @@ impl UnixRpcServer {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let _ = fs::remove_file(&self.path);
-        let listener = UnixListener::bind(&self.path)?;
         #[cfg(unix)]
-        {
+        let listener = {
+            let _ = fs::remove_file(&self.path);
+            let l = UnixListener::bind(&self.path)?;
             use std::os::unix::fs::PermissionsExt;
             let _ = fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o600));
-        }
-        println!("Unix RPC server listening on {}", self.path);
+            l
+        };
+
+        #[cfg(not(unix))]
+        let listener = TcpListener::bind("127.0.0.1:6245").await?;
+
+        println!("RPC server listening...");
 
         loop {
+            #[cfg(unix)]
             let (socket, _) = listener.accept().await?;
+            #[cfg(not(unix))]
+            let (socket, _) = listener.accept().await?;
+
             let queue_manager = self.queue_manager.clone();
             let config = self.config.clone();
 

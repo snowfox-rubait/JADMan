@@ -1,4 +1,8 @@
+#[cfg(unix)]
 use tokio::net::UnixStream;
+#[cfg(not(unix))]
+use tokio::net::TcpStream;
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use jadm_common::protocol::{Request, Response};
 use anyhow::{Result, anyhow};
@@ -13,7 +17,11 @@ impl RpcClient {
     }
 
     pub async fn send(&self, request: Request) -> Result<Response> {
+        #[cfg(unix)]
         let mut stream = UnixStream::connect(&self.socket_path).await?;
+        #[cfg(not(unix))]
+        let mut stream = TcpStream::connect("127.0.0.1:6245").await?;
+
         let mut req_data = serde_json::to_vec(&request)?;
         req_data.push(b'\n');
         stream.write_all(&req_data).await?;

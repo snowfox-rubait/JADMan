@@ -26,13 +26,20 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Use XDG runtime directory for socket path (fix from /tmp/jadm.sock)
-    let uid = unsafe { libc::getuid() };
-    let socket_path = format!("/run/user/{}/jadm/jadm.sock", uid);
+    // Resolve socket path dynamically in a cross-platform manner
+    let proj_dirs = directories::ProjectDirs::from("com", "jadm", "jadman").unwrap();
+    let socket_path = proj_dirs.runtime_dir()
+        .map(|d| d.join("jadm.sock"))
+        .unwrap_or_else(|| {
+            #[cfg(unix)]
+            { std::path::PathBuf::from("/tmp/jadm.sock") }
+            #[cfg(not(unix))]
+            { std::env::temp_dir().join("jadm.sock") }
+        });
 
     // Setup app and RPC
     let mut app = App::new();
-    let rpc = RpcClient::new(socket_path);
+    let rpc = RpcClient::new(socket_path.to_string_lossy().to_string());
 
     let mut tick_rate = interval(Duration::from_millis(500));
 
