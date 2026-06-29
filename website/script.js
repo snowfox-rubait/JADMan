@@ -1,9 +1,9 @@
 // 🌐 JADMan Browser Logic
 
-// 1. DYNAMIC RELEASE FETCHER (CODEBERG API)
+// 1. DYNAMIC RELEASE FETCHER (GITHUB API)
 const DEFAULT_VERSION = "v0.1.0";
-const REPO_URL = "https://codeberg.org/snowfox-rubait-96/jadman";
-const API_URL = "https://codeberg.org/api/v1/repos/snowfox-rubait-96/jadman/releases";
+const REPO_URL = "https://github.com/snowfox-rubait/jadman";
+const API_URL = "https://api.github.com/repos/snowfox-rubait/jadman/releases/latest";
 
 async function loadLatestRelease() {
     const badge = document.getElementById("version-badge");
@@ -15,12 +15,7 @@ async function loadLatestRelease() {
         const response = await fetch(API_URL);
         if (!response.ok) throw new Error(`API error: ${response.status}`);
         
-        const releases = await response.json();
-        if (!releases || releases.length === 0) {
-            throw new Error("No releases found in Codeberg repo");
-        }
-
-        const latest = releases[0];
+        const latest = await response.json();
         const version = latest.tag_name || DEFAULT_VERSION;
 
         // Update version badge
@@ -29,7 +24,7 @@ async function loadLatestRelease() {
 
         // Update direct download links
         winBtn.href = `${REPO_URL}/releases/download/${version}/jadman-x86_64-pc-windows-msvc.zip`;
-        macBtn.href = `${REPO_URL}/releases/download/${version}/jadman-x86_64-apple-darwin.tar.gz`;
+        macBtn.href = `${REPO_URL}/releases/download/${version}/jadman-aarch64-apple-darwin.tar.gz`;
         linBtn.href = `${REPO_URL}/releases/download/${version}/jadman-x86_64-unknown-linux-gnu.tar.gz`;
 
     } catch (err) {
