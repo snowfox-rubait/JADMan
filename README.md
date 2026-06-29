@@ -2,7 +2,7 @@
 
 > The download manager Linux deserves. A full IDM replacement — and then some.
 
-JADMan is a keyboard-driven, terminal-native download manager for Linux, built in Rust.
+JADMan is a keyboard-driven, terminal-native download manager and stream interceptor, built in Rust.
 It handles everything: segmented file downloads, video/audio from thousands of sites,
 scheduled triggers, browser integration, and a fast TUI — all orchestrated by a persistent
 background daemon.
@@ -110,57 +110,63 @@ TUI (jadm-tui)     ──Unix socket──────────────�
 
 ---
 
-## Installation
+## Installation & Setup
 
-> JADMan is in active development. Pre-built binaries are coming soon.
-> For now, build from source.
+JADMan is fully cross-platform and runs natively on **Linux**, **Windows**, and **macOS**. 
 
-### Prerequisites
+### 1. Install Core Dependencies
+JADMan orchestrates high-speed downloads and stream stitching using `aria2`, `yt-dlp`, and `ffmpeg`. Install them for your platform:
 
+*   **Windows**: Open PowerShell and run:
+    ```powershell
+    winget install aria2.aria2 yt-dlp.yt-dlp Gyan.FFmpeg
+    ```
+*   **macOS**: Open Terminal and run:
+    ```bash
+    brew install aria2 yt-dlp ffmpeg
+    ```
+*   **Linux**: Install via your package manager:
+    ```bash
+    sudo pacman -S aria2 yt-dlp ffmpeg   # Arch Linux
+    sudo apt install aria2 yt-dlp ffmpeg # Debian/Ubuntu
+    ```
+
+### 2. Get JADMan
+You can build JADMan from source (requires the Rust toolchain):
 ```bash
-# Required
-aria2c
-yt-dlp
-ffmpeg
-
-# Install via your package manager, e.g.:
-sudo pacman -S aria2 yt-dlp ffmpeg        # Arch
-sudo apt install aria2 yt-dlp ffmpeg      # Debian/Ubuntu
-```
-
-### Build from Source
-
-```bash
-git clone https://github.com/snowfox-rubait/JADMan
-cd JADMan
+git clone https://codeberg.org/snowfox-rubait-96/jadman.git
+cd jadman
 cargo build --release
-
-# Binaries will be at:
-# target/release/jadm-daemon   (daemon)
-# target/release/jadm-tui      (TUI)
 ```
+*   The compiled daemon will be at `target/release/jadm-daemon` (or `jadm-daemon.exe`).
+*   The TUI client will be at `target/release/jadm-tui` (or `jadm-tui.exe`).
 
-### Browser Extension
+### 3. Register Browser Native Messaging Host
+To allow browser extensions to send downloads to JADMan, register the manifest:
+*   **Windows**: Open CMD/PowerShell as user in the folder containing `jadm-daemon.exe` and run:
+    ```cmd
+    jadm-daemon.exe install-native-manifest
+    ```
+*   **Linux / macOS**: Open terminal in the build output folder and run:
+    ```bash
+    ./jadm-daemon install-native-manifest
+    ```
 
-1. Open Chrome → `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked** → select the `extension/chrome/` folder
-
-Firefox support: located in `extension/firefox/`.
+### 4. Install Browser Extension
+1.  Open your browser (Chrome/Brave/Edge) and go to `chrome://extensions`.
+2.  Enable **Developer mode** (toggle switch in the top-right corner).
+3.  Click **Load unpacked** (top-left) and select the `extension/chrome/` folder inside the repository.
+*(For Firefox, go to `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on**, and select any file inside `extension/firefox/`)*
 
 ---
 
 ## Usage
 
-```bash
-# Start the daemon
-jadm-daemon &
-
-# Open the TUI
-jadm-tui
-
-# Or add a download directly from the CLI (via RPC)
-# jadm-tui add https://example.com/file.zip
+1.  **Start the background daemon**:
+    *   **Linux / macOS**: `jadm-daemon &` (or run in background/systemd).
+    *   **Windows**: Launch `jadm-daemon.exe` (runs in background shell).
+2.  **Open TUI Console**:
+    *   Run `jadm-tui` (or `jadm-tui.exe` on Windows) to view the queue and control downloads via keyboard shortcuts.
 ```
 
 ---
