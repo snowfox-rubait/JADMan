@@ -35,6 +35,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         InputMode::AddUrl => render_add_url_popup(f, app),
         InputMode::ConfirmDelete => render_confirm_delete_popup(f, app),
         InputMode::Help => render_help_overlay(f),
+        InputMode::CookiePassword => render_cookie_password_popup(f, app),
         InputMode::Normal => {}
     }
 }
@@ -133,6 +134,10 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         InputMode::Help => vec![
             ("Any key", "Close"),
         ],
+        InputMode::CookiePassword => vec![
+            ("Enter", "Submit"),
+            ("Esc", "Cancel"),
+        ],
         InputMode::Normal => vec![
             ("q", "Quit"),
             ("j/k", "Navigate"),
@@ -143,6 +148,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             ("d", "Remove"),
             ("D", "Delete+File"),
             ("a", "Add URL"),
+            ("c", "Cookie Password"),
             ("?", "Help"),
         ],
     };
@@ -741,6 +747,49 @@ fn render_add_url_popup(f: &mut Frame, app: &App) {
     f.render_widget(input_para, chunks[2]);
 }
 
+fn render_cookie_password_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 7, f.size());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::ACCENT))
+        .title(Span::styled(
+            " Cookie Master Password ",
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .style(Style::default().bg(theme::SURFACE));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // label
+            Constraint::Length(1), // spacing
+            Constraint::Length(1), // input
+        ])
+        .split(inner);
+
+    let label = Paragraph::new(Span::styled(
+        "  Enter Cookie Master master password:",
+        Style::default().fg(theme::TEXT),
+    ));
+    f.render_widget(label, chunks[0]);
+
+    // Mask password characters with asterisks
+    let masked = "*".repeat(app.input_buffer.len());
+    let input_display = format!("  {} █", masked);
+    let input_para = Paragraph::new(Span::styled(
+        input_display,
+        Style::default().fg(theme::TEXT_BRIGHT),
+    ));
+    f.render_widget(input_para, chunks[2]);
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Confirm Delete Popup
 // ═══════════════════════════════════════════════════════════════════
@@ -857,6 +906,7 @@ fn render_help_overlay(f: &mut Frame) {
         help_line("    a", "Add new URL", key_style, desc_style),
         Line::from(Span::raw("")),
         Line::from(Span::styled("  General", section_style)),
+        help_line("    c", "Set Cookie Master Password", key_style, desc_style),
         help_line("    ?", "Toggle this help", key_style, desc_style),
         help_line("    q", "Quit", key_style, desc_style),
     ];

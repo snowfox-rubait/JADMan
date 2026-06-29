@@ -96,6 +96,10 @@ pub struct Download {
     pub live_from_start: bool,
     #[serde(default)]
     pub compress_video: bool,
+    #[serde(default)]
+    pub download_playlist: bool,
+    #[serde(default)]
+    pub referer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

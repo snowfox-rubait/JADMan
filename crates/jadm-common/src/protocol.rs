@@ -43,6 +43,10 @@ pub enum Request {
         live_from_start: Option<bool>,
         #[serde(default)]
         compress_video: Option<bool>,
+        #[serde(default)]
+        download_playlist: Option<bool>,
+        #[serde(default)]
+        referer: Option<String>,
     },
     GetFormats {
         url: String,
@@ -53,10 +57,13 @@ pub enum Request {
         user_agent: Option<String>,
         #[serde(default)]
         mode: Option<String>,
+        #[serde(default)]
+        referer: Option<String>,
     },
     PauseDownload { id: Uuid },
     ResumeDownload { id: Uuid },
     StopDownload { id: Uuid },
+    SetCookiePassword { password: String },
     DeleteDownload { 
         id: Uuid, 
         #[serde(default)]

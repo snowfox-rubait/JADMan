@@ -71,6 +71,8 @@ impl UnixRpcServer {
                             live_support,
                             live_from_start,
                             compress_video,
+                            download_playlist,
+                            referer,
                             ..
                         } => {
                             let default_folder = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()) + "/Downloads";
@@ -92,6 +94,8 @@ impl UnixRpcServer {
                                 live_support: live_support.unwrap_or(false),
                                 live_from_start: live_from_start.unwrap_or(false),
                                 compress_video: compress_video.unwrap_or(false),
+                                download_playlist: download_playlist.unwrap_or(false),
+                                referer,
                             };
                             match queue_manager.add_download(params).await {
                                 Ok((id, folder)) => Response::Ok { 
@@ -108,8 +112,27 @@ impl UnixRpcServer {
                             netscape_cookies,
                             user_agent,
                             mode,
+                            referer,
                         } => {
-                            match crate::ytdlp::runner::get_formats(&url, cookies, netscape_cookies, user_agent, mode).await {
+                            let mut cookies = cookies;
+                            let mut netscape_cookies = netscape_cookies;
+                            if cookies.is_none() && netscape_cookies.is_none() {
+                                if let Ok(url_parsed) = reqwest::Url::parse(&url) {
+                                    if let Some(domain) = url_parsed.domain() {
+                                        if let Some(profile_id) = crate::queue::manager::find_cookie_master_profile_id(domain).await {
+                                            let pass_lock = queue_manager.cookie_jar_password.lock().await;
+                                            let pass_opt = pass_lock.clone().or_else(|| std::env::var("COOKIE_JAR_PASSWORD").ok());
+                                            if let Some(pass) = pass_opt {
+                                                if let Ok(nc) = crate::queue::manager::decrypt_cookie_master_profile(profile_id, &pass).await {
+                                                    cookies = Some(crate::queue::manager::netscape_to_cookie_header(&nc));
+                                                    netscape_cookies = Some(nc);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            match crate::ytdlp::runner::get_formats(&url, cookies, netscape_cookies, user_agent, mode, referer).await {
                                 Ok(formats) => Response::Formats {
                                     status: "ok".to_string(),
                                     formats,
@@ -134,6 +157,11 @@ impl UnixRpcServer {
                                 Ok(_) => Response::Ok { status: "Stopped".to_string(), id: None, folder: None },
                                 Err(e) => Response::Error { error: e.to_string() },
                             }
+                        }
+                        Request::SetCookiePassword { password } => {
+                            let mut p = queue_manager.cookie_jar_password.lock().await;
+                            *p = Some(password);
+                            Response::Ok { status: "Password set".to_string(), id: None, folder: None }
                         }
                         Request::DeleteDownload { id, delete_file } => {
                             match queue_manager.delete_download(id, delete_file).await {

@@ -29,6 +29,8 @@ pub struct AddDownloadParams {
     pub live_support: bool,
     pub live_from_start: bool,
     pub compress_video: bool,
+    pub download_playlist: bool,
+    pub referer: Option<String>,
 }
 
 
@@ -49,6 +51,7 @@ pub struct QueueManager {
     download_semaphore: Arc<tokio::sync::Semaphore>,
     active_permits: DashMap<Uuid, OwnedSemaphorePermit>,
     download_metrics: DashMap<Uuid, (u64, Option<u64>)>, // (rate_bytes, eta_secs)
+    pub cookie_jar_password: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl QueueManager {
@@ -64,6 +67,7 @@ impl QueueManager {
             download_semaphore: Arc::new(tokio::sync::Semaphore::new(max_concurrent_downloads)),
             active_permits: DashMap::new(),
             download_metrics: DashMap::new(),
+            cookie_jar_password: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -152,6 +156,8 @@ impl QueueManager {
             live_support: params.live_support,
             live_from_start: params.live_from_start,
             compress_video: params.compress_video,
+            download_playlist: params.download_playlist,
+            referer: params.referer,
         };
 
         {
@@ -176,7 +182,7 @@ impl QueueManager {
             }
         };
 
-        let (url, folder, engine, format, cookies, netscape_cookies, user_agent, ghost_mode, write_subs, embed_thumbnail, embed_chapters, live_from_start, compress_video) = {
+        let (url, folder, engine, format, cookies, netscape_cookies, user_agent, ghost_mode, write_subs, embed_thumbnail, embed_chapters, live_from_start, compress_video, download_playlist, referer) = {
             let dl = self.downloads.get(&id).ok_or_else(|| anyhow!("Download not found"))?;
             (
                 dl.url.clone(),
@@ -192,9 +198,38 @@ impl QueueManager {
                 dl.embed_chapters,
                 dl.live_from_start,
                 dl.compress_video,
+                dl.download_playlist,
+                dl.referer.clone(),
             )
         };
 
+        let mut cookies = cookies;
+        let mut netscape_cookies = netscape_cookies;
+        if cookies.is_none() && netscape_cookies.is_none() {
+            if let Ok(url_parsed) = reqwest::Url::parse(&url) {
+                if let Some(domain) = url_parsed.domain() {
+                    if let Some(profile_id) = find_cookie_master_profile_id(domain).await {
+                        let pass_lock = self.cookie_jar_password.lock().await;
+                        let pass_opt = pass_lock.clone().or_else(|| std::env::var("COOKIE_JAR_PASSWORD").ok());
+                        if let Some(pass) = pass_opt {
+                            match decrypt_cookie_master_profile(profile_id, &pass).await {
+                                Ok(nc) => {
+                                    println!("[JADMan Daemon] Loaded cookies from Cookie Master profile ID {} for {}", profile_id, domain);
+                                    cookies = Some(netscape_to_cookie_header(&nc));
+                                    netscape_cookies = Some(nc);
+                                }
+                                Err(e) => {
+                                    eprintln!("[JADMan Daemon] Failed to decrypt Cookie Master profile {}: {}", profile_id, e);
+                                }
+                            }
+                        } else {
+                            eprintln!("[JADMan Daemon] Cookie Master profile found for {}, but no password is set. Prompt in TUI or set COOKIE_JAR_PASSWORD.", domain);
+                        }
+                    }
+                }
+            }
+        }
+ 
         match engine {
             DownloadEngine::Aria2c => {
                 let existing_gid = self.aria2_gids.get(&id).map(|g| g.value().clone());
@@ -207,6 +242,9 @@ impl QueueManager {
                         if let Some(c) = cookies {
                             options["header"] = serde_json::json!(vec![format!("Cookie: {}", c)]);
                         }
+                        if let Some(ref ref_url) = referer {
+                            options["referer"] = serde_json::json!(ref_url);
+                        }
                         if ghost_mode {
                             let token = crate::config::get_socks_token()?;
                             options["all-proxy"] = serde_json::json!(format!("socks5://jadm:{}@127.0.0.1:6247", token));
@@ -217,6 +255,9 @@ impl QueueManager {
                     let mut options = serde_json::json!({ "dir": folder });
                     if let Some(c) = cookies {
                         options["header"] = serde_json::json!(vec![format!("Cookie: {}", c)]);
+                    }
+                    if let Some(ref ref_url) = referer {
+                        options["referer"] = serde_json::json!(ref_url);
                     }
                     if ghost_mode {
                         let token = crate::config::get_socks_token()?;
@@ -230,7 +271,7 @@ impl QueueManager {
             DownloadEngine::Ytdlp => {
                 let manager = self.clone();
                 let handle = tokio::spawn(async move {
-                    run_ytdlp(&url, &folder, format, cookies, netscape_cookies, user_agent, ghost_mode, write_subs, embed_thumbnail, embed_chapters, live_from_start, compress_video,
+                    run_ytdlp(&url, &folder, format, cookies, netscape_cookies, user_agent, ghost_mode, write_subs, embed_thumbnail, embed_chapters, live_from_start, compress_video, download_playlist, referer,
                         |pid| {
                             manager.ytdlp_pids.insert(id, pid);
                         },
@@ -651,10 +692,17 @@ impl QueueManager {
         }
 
         if let Some(mut dl) = self.downloads.get_mut(&id) {
-            if dl.live_support && (dl.size.is_none() || dl.size == Some(0)) && dl.status == DownloadStatus::Downloading {
+            let is_playlist = dl.download_playlist;
+            let has_finished_some = is_playlist && has_completed_media_files(&dl.folder);
+
+            if (dl.live_support && (dl.size.is_none() || dl.size == Some(0)) && dl.status == DownloadStatus::Downloading)
+                || has_finished_some
+            {
                 dl.status = DownloadStatus::Done;
                 dl.completed_at = Some(Utc::now());
-                dl.size = Some(dl.downloaded);
+                if dl.size.is_none() || dl.size == Some(0) {
+                    dl.size = Some(dl.downloaded);
+                }
             } else {
                 dl.status = DownloadStatus::Cancelled;
             }
@@ -937,6 +985,93 @@ pub fn get_unique_path(dest_dir: &std::path::Path, filename: &std::ffi::OsStr) -
             return new_path;
         }
         counter += 1;
+    }
+}
+
+pub fn has_completed_media_files(folder: &str) -> bool {
+    let path = std::path::Path::new(folder);
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    if !name_str.ends_with(".part") && !name_str.ends_with(".ytdl") {
+                        let ext = std::path::Path::new(name_str.as_ref())
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if matches!(ext.as_str(), "mp4" | "mkv" | "webm" | "mp3" | "m4a" | "flac" | "wav" | "avi" | "mov" | "3gp" | "ogg") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn netscape_to_cookie_header(nc: &str) -> String {
+    let mut parts = Vec::new();
+    for line in nc.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.len() >= 7 {
+            let name = cols[5];
+            let value = cols[6];
+            parts.push(format!("{}={}", name, value));
+        }
+    }
+    parts.join("; ")
+}
+
+pub async fn find_cookie_master_profile_id(domain: &str) -> Option<i64> {
+    use sqlx::Connection;
+    let home = std::env::var("HOME").ok()?;
+    let db_path = std::path::Path::new(&home).join(".config/CookieJar/jar.db");
+    if !db_path.exists() {
+        return None;
+    }
+    
+    let mut conn = sqlx::sqlite::SqliteConnection::connect(&format!("sqlite:{}", db_path.to_string_lossy()))
+        .await
+        .ok()?;
+        
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, site FROM cookies")
+        .fetch_all(&mut conn)
+        .await
+        .ok()?;
+
+    for (id, site) in rows {
+        let site_clean = site.trim_start_matches("www.").to_lowercase();
+        let domain_clean = domain.trim_start_matches("www.").to_lowercase();
+        if domain_clean.contains(&site_clean) || site_clean.contains(&domain_clean) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+pub async fn decrypt_cookie_master_profile(id: i64, password: &str) -> Result<String> {
+    let mut cmd = tokio::process::Command::new("cookie-jar");
+    cmd.arg("use")
+       .arg(id.to_string());
+    cmd.env("COOKIE_JAR_PASSWORD", password);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    
+    let output = cmd.output().await?;
+    if output.status.success() {
+        let cookies = String::from_utf8(output.stdout)?;
+        Ok(cookies)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(anyhow::anyhow!("cookie-jar decryption failed: {}", stderr.trim()))
     }
 }
 

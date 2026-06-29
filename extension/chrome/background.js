@@ -207,72 +207,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
     if (message.action === "start_browser_fetch") {
-        const { url, daemonId, folder, userAgent } = message;
-        console.log(`[JADMan BrowserFetch] Starting fetch for URL: ${url}, ID: ${daemonId}`);
+        const { url, daemonId, folder } = message;
+        console.log(`[JADMan BrowserFetch] Forwarding request to active tab... URL: ${url}, ID: ${daemonId}`);
         
-        (async () => {
-            try {
-                const headers = {};
-                if (userAgent) headers['User-Agent'] = userAgent;
-
-                const response = await fetch(url, { headers });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
-                }
-
-                const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
-                const contentType = response.headers.get('content-type') || '';
-                const contentDisp = response.headers.get('content-disposition') || '';
-
-                let filename = 'download';
-                if (contentDisp) {
-                    const match = contentDisp.match(/filename\*?=["']?(?:UTF-8'')?([^"';\n]+)["']?/i);
-                    if (match && match[1]) {
-                        filename = decodeURIComponent(match[1]);
-                    } else {
-                        const matchSimple = contentDisp.match(/filename=["']?([^"';\n]+)["']?/i);
-                        if (matchSimple && matchSimple[1]) {
-                            filename = matchSimple[1];
-                        }
-                    }
-                }
-                if (filename === 'download') {
-                    filename = url.split('/').pop().split('?')[0] || 'download';
-                }
-
-                const reader = response.body.getReader();
-                let chunkIndex = 0;
-                let downloaded = 0;
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    const isLast = done;
-                    const chunkData = done ? new Uint8Array(0) : value;
-
-                    if (chunkIndex % 10 === 0) {
-                        chrome.storage.local.get(null, () => {});
-                    }
-
-                    sendNativeMessage({
-                        cmd: "SiphonChunk",
-                        daemon_id: daemonId,
-                        chunk_index: chunkIndex,
-                        is_last: isLast,
-                        filename: filename,
-                        total_size: totalSize,
-                        data: Array.from(chunkData) // Convert Uint8Array to Array for JSON
-                    });
-
-                    if (done) break;
-                    chunkIndex++;
-                    downloaded += chunkData.length;
-                }
-                console.log(`[JADMan BrowserFetch] Completed download of ${filename} (ID: ${daemonId})`);
-            } catch (err) {
-                console.error(`[JADMan BrowserFetch] Error:`, err);
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs && tabs[0]) {
+                console.log(`[JADMan BrowserFetch] Sending message to tab ${tabs[0].id}`);
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: "start_browser_fetch",
+                    url: url,
+                    daemonId: daemonId,
+                    folder: folder
+                });
+            } else {
+                console.error("[JADMan BrowserFetch] No active tab found to run fetch in.");
                 sendNativeMessage({ cmd: "StopDownload", id: daemonId });
             }
-        })();
+        });
 
         sendResponse({ status: "started" });
         return true;

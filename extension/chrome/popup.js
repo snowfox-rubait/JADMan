@@ -3,6 +3,17 @@ const url = params.get("url") || "";
 const mimeType = params.get("mime") || null;
 document.getElementById("url").value = url;
 
+// Detect and show playlist option
+const hasPlaylist = url.includes("list=") || url.includes("playlist?list=");
+if (hasPlaylist) {
+    const wrap = document.getElementById("playlistOptionWrap");
+    if (wrap) {
+        wrap.style.display = "flex";
+        const chk = document.getElementById("downloadPlaylist");
+        if (chk) chk.checked = true;
+    }
+}
+
 const DAEMON_URL = "http://127.0.0.1:6246";
 
 const qualitySelect = document.getElementById("quality");
@@ -141,7 +152,8 @@ async function init() {
             cookies: globalCookieString || null,
             netscape_cookies: globalNetscapeCookies || null,
             userAgent: globalUserAgent,
-            mode: mode
+            mode: mode,
+            referer: params.get("referer") || null
         }
     }).then(response => {
         if (!response || response.error) {
@@ -199,6 +211,7 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
     const liveSupport = document.getElementById("liveSupport").checked;
     const liveFromStart = document.getElementById("liveFromStart").checked;
     const compressVideo = document.getElementById("compressVideo").checked;
+    const downloadPlaylist = document.getElementById("downloadPlaylist") ? document.getElementById("downloadPlaylist").checked : false;
     const mode = modeSelect.value;
     const ghostEngine = ghostEngineSelect ? ghostEngineSelect.value : "ytdlp";
     const useDebugger = mode === "ghost" && ghostEngine === "debugger_capture";
@@ -482,7 +495,9 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
             embed_chapters: embedChapters,
             live_support: liveSupport,
             live_from_start: liveFromStart,
-            compress_video: compressVideo
+            compress_video: compressVideo,
+            download_playlist: downloadPlaylist,
+            referer: params.get("referer") || null
         }
     }).then(data => {
         window.close();

@@ -17,12 +17,22 @@ pub struct ProgressUpdate {
     pub downloaded_bytes: Option<u64>,
 }
 
-pub async fn run_ytdlp(url: &str, folder: &str, format: Option<String>, cookies: Option<String>, netscape_cookies: Option<String>, user_agent: Option<String>, ghost_mode: bool, write_subs: bool, embed_thumbnail: bool, embed_chapters: bool, live_from_start: bool, compress_video: bool, on_spawn: impl FnOnce(u32), mut on_progress: impl FnMut(ProgressUpdate)) -> Result<()> {
+pub async fn run_ytdlp(url: &str, folder: &str, format: Option<String>, cookies: Option<String>, netscape_cookies: Option<String>, user_agent: Option<String>, ghost_mode: bool, write_subs: bool, embed_thumbnail: bool, embed_chapters: bool, live_from_start: bool, compress_video: bool, download_playlist: bool, referer: Option<String>, on_spawn: impl FnOnce(u32), mut on_progress: impl FnMut(ProgressUpdate)) -> Result<()> {
     let mut cmd = Command::new(get_ytdlp_path());
     cmd.arg("--newline")
        .arg("--progress")
        .arg("--continue")      // always resume partial downloads
        .arg("-o").arg(format!("{}/%(title)s.%(ext)s", folder));
+
+    if download_playlist {
+        cmd.arg("--yes-playlist");
+    } else {
+        cmd.arg("--no-playlist");
+    }
+ 
+    if let Some(ref r) = referer {
+        cmd.arg("--referer").arg(r);
+    }
 
     if live_from_start {
         cmd.arg("--live-from-start");
@@ -334,10 +344,15 @@ pub async fn get_formats(
     netscape_cookies: Option<String>,
     user_agent: Option<String>,
     mode: Option<String>,
+    referer: Option<String>,
 ) -> Result<Vec<jadm_common::protocol::FormatInfo>> {
     let mut cmd = Command::new(get_ytdlp_path());
     cmd.arg("-J") // Dump JSON metadata
        .arg("--no-playlist");
+ 
+    if let Some(ref r) = referer {
+        cmd.arg("--referer").arg(r);
+    }
 
     let ghost_mode = mode.as_deref() == Some("ghost");
 

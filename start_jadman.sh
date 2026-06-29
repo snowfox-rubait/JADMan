@@ -4,7 +4,7 @@
 # Creates a tmux session named "jadman" and launches the daemon, TUI, and aria2c RPC dependency.
 
 SESSION_NAME="jadman"
-REPO_DIR="/home/rubait/Work/jadm"
+REPO_DIR="/home/rubait/Work/jadman"
 
 # Locate binaries
 DAEMON_BIN="$REPO_DIR/target/release/jadm-daemon"

@@ -415,6 +415,63 @@ chrome.runtime.onMessage.addListener((message) => {
     } else if (message.action === "stop_webgl_capture") {
         console.log("[JADMan Content Script] Received programmatic stop_webgl_capture message.");
         stopWebGLRecording();
+    } else if (message.action === "start_browser_fetch") {
+        console.log("[JADMan Content Script] Received start_browser_fetch message:", message);
+        const { url, daemonId, folder } = message;
+        (async () => {
+            try {
+                const response = await nativeFetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+                const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
+                const contentDisp = response.headers.get('content-disposition') || '';
+                
+                let filename = 'download';
+                if (contentDisp) {
+                    const match = contentDisp.match(/filename\*?=["']?(?:UTF-8'')?([^"';\n]+)["']?/i);
+                    if (match && match[1]) {
+                        filename = decodeURIComponent(match[1]);
+                    } else {
+                        const matchSimple = contentDisp.match(/filename=["']?([^"';\n]+)["']?/i);
+                        if (matchSimple && matchSimple[1]) {
+                            filename = matchSimple[1];
+                        }
+                    }
+                }
+                if (filename === 'download') {
+                    filename = url.split('/').pop().split('?')[0] || 'download';
+                }
+                
+                const reader = response.body.getReader();
+                let chunkIndex = 0;
+                let downloaded = 0;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    const isLast = done;
+                    const chunkData = done ? new Uint8Array(0) : value;
+                    
+                    chrome.runtime.sendMessage({
+                        cmd: "SiphonChunk",
+                        daemon_id: daemonId,
+                        chunk_index: chunkIndex,
+                        is_last: isLast,
+                        filename: filename,
+                        total_size: totalSize,
+                        data: Array.from(chunkData)
+                    });
+                    
+                    if (done) break;
+                    chunkIndex++;
+                    downloaded += chunkData.length;
+                }
+                console.log(`[JADMan Content Script] Browser fetch download completed: ${filename}`);
+            } catch(err) {
+                console.error("[JADMan Content Script] Browser fetch error:", err);
+                chrome.runtime.sendMessage({ cmd: "StopDownload", id: daemonId });
+            }
+        })();
     }
 });
 
@@ -587,17 +644,15 @@ function startRecordingWebGL(canvas, message) {
 
 async function uploadWebGLChunk(daemonId, filename, chunkIndex, isLast, arrayBuffer) {
     try {
-        const DAEMON_URL = "http://127.0.0.1:6246";
         console.log("[JADMan Content Script] Uploading WebGL chunk to daemon...", chunkIndex, "Length:", arrayBuffer.byteLength);
-        await fetch(`${DAEMON_URL}/siphon/chunk`, {
-            method: "POST",
-            headers: {
-                "x-jadman-uuid": daemonId,
-                "x-jadman-chunk-index": chunkIndex.toString(),
-                "x-jadman-is-last": isLast.toString(),
-                "x-jadman-filename": encodeURIComponent(filename)
-            },
-            body: arrayBuffer
+        await chrome.runtime.sendMessage({
+            cmd: "SiphonChunk",
+            daemon_id: daemonId,
+            chunk_index: chunkIndex,
+            is_last: isLast,
+            filename: filename,
+            total_size: arrayBuffer.byteLength,
+            data: Array.from(new Uint8Array(arrayBuffer))
         });
         console.log("[JADMan Content Script] Chunk upload response success.");
     } catch(e) {
@@ -620,7 +675,16 @@ function applyIconPosition(icon, position) {
 function injectMediaIcon(targetElement, mediaUrl, isGrabberFallback = false, attempt = 0) {
     if (currentDownloadMode === "ghost") return;
     if (!targetElement || targetElement.tagName === "BODY" || attempt > 5) return;
-    if (targetElement.dataset[RANDOM_PREFIX + 'Injected'] === "true") return;
+    
+    const wrapperTagName = 'x-' + RANDOM_PREFIX + '-wrap';
+    const existingWrapper = targetElement.querySelector(wrapperTagName);
+    if (targetElement.dataset[RANDOM_PREFIX + 'Injected'] === "true") {
+        if (existingWrapper) {
+            return;
+        } else {
+            targetElement.dataset[RANDOM_PREFIX + 'Injected'] = "false";
+        }
+    }
     
     const style = window.getComputedStyle(targetElement);
     if (style.position === "static") {
@@ -731,3 +795,8 @@ function scanMedia() {
 setInterval(scanMedia, 3000);
 scanMedia();
 unblockRightClick();
+
+nativeAddEventListener.call(window, "load", () => { scanMedia(); });
+nativeAddEventListener.call(document, "DOMContentLoaded", () => { scanMedia(); });
+nativeAddEventListener.call(window, "yt-navigate-finish", () => { scanMedia(); });
+nativeAddEventListener.call(window, "popstate", () => { setTimeout(scanMedia, 500); });

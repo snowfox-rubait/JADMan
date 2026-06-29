@@ -9,6 +9,7 @@ pub async fn handle_key_event(key: KeyEvent, app: &mut App, rpc: &RpcClient) {
         InputMode::AddUrl => handle_add_url_mode(key, app, rpc).await,
         InputMode::ConfirmDelete => handle_confirm_delete(key, app, rpc).await,
         InputMode::Help => handle_help_mode(key, app),
+        InputMode::CookiePassword => handle_cookie_password_mode(key, app, rpc).await,
     }
 }
 
@@ -92,6 +93,12 @@ async fn handle_normal_mode(key: KeyEvent, app: &mut App, rpc: &RpcClient) {
             app.input_buffer.clear();
         }
 
+        // Cookie Master password dialog
+        KeyCode::Char('c') | KeyCode::Char('C') => {
+            app.input_mode = InputMode::CookiePassword;
+            app.input_buffer.clear();
+        }
+
         // Help overlay
         KeyCode::Char('?') => {
             app.input_mode = InputMode::Help;
@@ -130,6 +137,8 @@ async fn handle_add_url_mode(key: KeyEvent, app: &mut App, rpc: &RpcClient) {
                         live_support: None,
                         live_from_start: None,
                         compress_video: None,
+                        download_playlist: None,
+                        referer: None,
                     })
                     .await;
                 match result {
@@ -188,5 +197,33 @@ fn handle_help_mode(key: KeyEvent, app: &mut App) {
             app.input_mode = InputMode::Normal;
             app.show_help = false;
         }
+    }
+}
+
+async fn handle_cookie_password_mode(key: KeyEvent, app: &mut App, rpc: &RpcClient) {
+    match key.code {
+        KeyCode::Esc => {
+            app.input_mode = InputMode::Normal;
+            app.input_buffer.clear();
+        }
+        KeyCode::Enter => {
+            let password = app.input_buffer.trim().to_string();
+            if !password.is_empty() {
+                let result = rpc.send(Request::SetCookiePassword { password }).await;
+                match result {
+                    Ok(_) => app.status_message = Some("Cookie Master password set!".to_string()),
+                    Err(e) => app.status_message = Some(format!("Error: {}", e)),
+                }
+            }
+            app.input_mode = InputMode::Normal;
+            app.input_buffer.clear();
+        }
+        KeyCode::Backspace => {
+            app.input_buffer.pop();
+        }
+        KeyCode::Char(c) => {
+            app.input_buffer.push(c);
+        }
+        _ => {}
     }
 }

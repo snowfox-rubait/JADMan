@@ -70,6 +70,7 @@ pub enum InputMode {
     AddUrl,
     ConfirmDelete,
     Help,
+    CookiePassword,
 }
 
 #[allow(dead_code)]
