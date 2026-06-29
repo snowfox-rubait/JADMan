@@ -113,12 +113,46 @@ window.addEventListener(JADMAN_COMM_TOKEN, (event) => {
     const { url, type, data, mime, priority } = event.detail || {};
     if (!chrome.runtime?.id) return;
     
+    if (type === 'MEDIA_DETECTED') {
+        const { mediaId, src, tagName } = data;
+        const el = document.querySelector(`[data-jadman-media-id="${mediaId}"]`);
+        if (el) {
+            let container = el.closest('.player, [class*="player"], [id*="player"], .video-container');
+            if (!container) container = el.parentElement;
+            if (container) {
+                const isBlob = src && src.startsWith("blob:");
+                const isGrabberFallback = isBlob || !src;
+                injectMediaIcon(container, isGrabberFallback ? null : src, isGrabberFallback);
+            }
+        }
+        return;
+    }
+
+    if (type === 'APPEND_BUFFER' && data) {
+        // Send raw chunk to background if in recording mode
+        const activeRecordId = document.documentElement.getAttribute('data-jadman-record-id');
+        const chunkIndexStr = document.documentElement.getAttribute('data-jadman-record-index') || '0';
+        const chunkIndex = parseInt(chunkIndexStr, 10);
+        document.documentElement.setAttribute('data-jadman-record-index', (chunkIndex + 1).toString());
+        
+        chrome.runtime.sendMessage({
+            cmd: 'SiphonChunk',
+            daemon_id: activeRecordId,
+            chunk_index: chunkIndex,
+            is_last: false,
+            filename: 'captured_stream.mp4',
+            total_size: 0,
+            data: Array.from(new Uint8Array(data))
+        });
+        return;
+    }
+
     chrome.runtime.sendMessage({
         action: 'siphoned_data',
         url: url,
         mime: mime,
         priority: priority,
-        size: data.byteLength || data.size || data.length
+        size: data ? (data.byteLength || data.size || data.length) : 0
     });
 });
 
@@ -472,6 +506,47 @@ chrome.runtime.onMessage.addListener((message) => {
                 chrome.runtime.sendMessage({ cmd: "StopDownload", id: daemonId });
             }
         })();
+    } else if (message.action === "hunt_links") {
+        const links = [];
+        
+        // Scan standard anchors
+        const anchors = document.querySelectorAll('a');
+        anchors.forEach(a => {
+            const href = a.href || '';
+            const text = (a.innerText || '').trim();
+            const downloadAttr = a.getAttribute('download');
+            
+            const matchesExt = /\.(pdf|zip|rar|tar|gz|mp4|webm|mp3|m4a|dmg|exe|apk|epub)$/i.test(href);
+            const matchesText = /download|get|save/i.test(text) || /download/i.test(a.className) || /download/i.test(a.id);
+            
+            if (href && (matchesExt || matchesText || downloadAttr)) {
+                links.push({
+                    url: href,
+                    text: text || downloadAttr || href.split('/').pop().split('?')[0] || "Download Link",
+                    source: "Anchor"
+                });
+            }
+        });
+        
+        // Scan buttons that might trigger downloads
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(btn => {
+            const text = (btn.innerText || '').trim();
+            const onclick = btn.getAttribute('onclick') || '';
+            
+            const matchesText = /download|get|save/i.test(text) || /download/i.test(btn.className) || /download/i.test(btn.id);
+            
+            if (matchesText) {
+                links.push({
+                    url: onclick ? (onclick.match(/https?:\/\/[^\s'"]+/) || [''])[0] : '',
+                    text: text || "Download Button",
+                    source: "Button",
+                    actionable: true
+                });
+            }
+        });
+
+        sendResponse({ links: links.slice(0, 50) });
     }
 });
 
@@ -727,6 +802,24 @@ function injectMediaIcon(targetElement, mediaUrl, isGrabberFallback = false, att
     nativeAppendChild.call(shadow, icon);
     nativeAppendChild.call(targetElement, wrapper);
     targetElement.dataset[RANDOM_PREFIX + 'Injected'] = "true";
+
+    const observer = new MutationObserver(() => {
+        if (!targetElement.contains(wrapper)) {
+            try {
+                nativeAppendChild.call(targetElement, wrapper);
+            } catch (e) {}
+        }
+        if (wrapper.style.display === 'none' || wrapper.style.visibility === 'hidden') {
+            wrapper.style.display = '';
+            wrapper.style.visibility = '';
+        }
+        if (icon.style.display === 'none' || icon.style.visibility === 'hidden' || icon.style.opacity === '0') {
+            icon.style.display = '';
+            icon.style.visibility = '';
+            icon.style.opacity = '0.6';
+        }
+    });
+    observer.observe(targetElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
     const wrapperItem = { wrapper, targetElement, icon };
     activeMediaWrappers.push(wrapperItem);

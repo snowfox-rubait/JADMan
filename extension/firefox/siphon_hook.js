@@ -26,7 +26,9 @@
         let priority = 'NORMAL';
         const lowerUrl = url.toLowerCase();
         
-        if (lowerUrl.includes('.m3u8') || lowerUrl.includes('.mpd') || mime === 'application/x-mpegURL' || mime === 'application/dash+xml') {
+        if (type === 'MEDIA_DETECTED') {
+            priority = 'MEDIA';
+        } else if (lowerUrl.includes('.m3u8') || lowerUrl.includes('.mpd') || mime === 'application/x-mpegURL' || mime === 'application/dash+xml') {
             priority = 'MANIFEST';
         } else if (lowerUrl.includes('.ts') || lowerUrl.includes('.m4s') || lowerUrl.includes('.m4a') || lowerUrl.includes('.m4v')) {
             priority = 'SEGMENT';
@@ -79,6 +81,15 @@
         proxyOriginalMap.set(proxy, original);
         return proxy;
     }
+
+    // SHADOW DOM CAPTURE
+    const pageShadowRoots = [];
+    const originalAttachShadow = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = createStealthProxy(originalAttachShadow, function(options) {
+        const shadow = originalAttachShadow.apply(this, arguments);
+        pageShadowRoots.push(shadow);
+        return shadow;
+    });
 
     // HIJACK FETCH
     const originalFetch = window.fetch;
@@ -171,7 +182,8 @@
                     }
 
                     if (buffer && buffer.byteLength > 0) {
-                        dispatch(window.location.href, 'APPEND_BUFFER', buffer.slice(0), mime);
+                        const isRecordMode = document.documentElement.getAttribute('data-jadman-record') === 'true';
+                        dispatch(window.location.href, 'APPEND_BUFFER', isRecordMode ? buffer.slice(0) : null, mime);
                     }
                 } catch (e) {
                     log('Error in appendBuffer hook:', e);
@@ -183,5 +195,51 @@
         log('Failed to install MediaSource hooks:', e);
     }
 
-    log('Deep Capture Hook (v2: Stream Aware) Active.');
+    // RECURSIVE SHADOW DOM SCANNER
+    function findElements(root, tagName, list = []) {
+        if (!root) return list;
+        try {
+            const elements = root.querySelectorAll(tagName);
+            for (let i = 0; i < elements.length; i++) {
+                list.push(elements[i]);
+            }
+        } catch(e) {}
+        try {
+            const all = root.querySelectorAll('*');
+            for (let i = 0; i < all.length; i++) {
+                const el = all[i];
+                if (el.shadowRoot) {
+                    findElements(el.shadowRoot, tagName, list);
+                }
+            }
+        } catch(e) {}
+        if (root === document) {
+            for (let i = 0; i < pageShadowRoots.length; i++) {
+                findElements(pageShadowRoots[i], tagName, list);
+            }
+        }
+        return list;
+    }
+
+    let mediaIdCounter = 0;
+    function scanAndTagMedia() {
+        if (shouldBypass()) return;
+        const videos = findElements(document, 'video');
+        const audios = findElements(document, 'audio');
+        const allMedia = [...videos, ...audios];
+        
+        for (let i = 0; i < allMedia.length; i++) {
+            const el = allMedia[i];
+            let mediaId = el.getAttribute('data-jadman-media-id');
+            if (!mediaId) {
+                mediaId = 'm_' + (++mediaIdCounter) + '_' + Math.random().toString(36).substring(2, 7);
+                el.setAttribute('data-jadman-media-id', mediaId);
+            }
+            const src = el.src || el.currentSrc || '';
+            dispatch(window.location.href, 'MEDIA_DETECTED', { mediaId: mediaId, src: src, tagName: el.tagName });
+        }
+    }
+    setInterval(scanAndTagMedia, 2000);
+
+    log('Deep Capture Hook (v2: Stream Aware + Shadow DOM) Active.');
 })();
