@@ -1578,6 +1578,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "crossterm",
+ "directories",
  "jadm-common",
  "libc",
  "ratatui",

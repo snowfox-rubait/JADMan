@@ -151,7 +151,26 @@ async fn main() -> Result<()> {
         }));
     }
 
-    // 2. Initialize Aria2 Client
+    // 2. Automatically spawn aria2c if not running
+    if tokio::net::TcpStream::connect("127.0.0.1:6800").await.is_err() {
+        println!("Aria2c RPC server not detected on 127.0.0.1:6800. Spawning aria2c...");
+        let mut cmd = tokio::process::Command::new("aria2c");
+        cmd.arg("--enable-rpc")
+           .arg("--rpc-listen-all=true")
+           .arg("--rpc-allow-origin-all=true");
+        
+        match cmd.spawn() {
+            Ok(child) => {
+                println!("Aria2c spawned successfully (PID: {:?}).", child.id());
+                sleep(Duration::from_millis(800)).await;
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to spawn aria2c: {}. Make sure aria2c is installed and in your PATH.", e);
+            }
+        }
+    }
+
+    // Initialize Aria2 Client
     let aria2_url = "http://127.0.0.1:6800/jsonrpc".to_string();
     let aria2_secret = None;
     let aria2_client: Arc<dyn crate::aria2::client::Aria2ClientTrait> = Arc::new(crate::aria2::client::Aria2Client::new(aria2_url, aria2_secret));
@@ -188,7 +207,7 @@ async fn main() -> Result<()> {
     }
 
     let socket_path_str = socket_path.to_string_lossy().to_string();
-    let rpc_server = UnixRpcServer::new(queue_manager.clone(), config.clone(), socket_path_str);
+    let rpc_server = UnixRpcServer::new(queue_manager.clone(), config.clone(), socket_path_str.clone());
     
     let rpc_handle = tokio::spawn(async move {
         if let Err(e) = rpc_server.run().await {
@@ -314,6 +333,11 @@ async fn main() -> Result<()> {
         if let Err(e) = net_intercepter.teardown() {
             eprintln!("Failed to teardown network interception: {}", e);
         }
+    }
+
+    #[cfg(unix)]
+    {
+        let _ = std::fs::remove_file(socket_path_str);
     }
 
     println!("jadm-daemon shutting down.");

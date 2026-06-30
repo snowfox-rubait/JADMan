@@ -564,6 +564,11 @@ impl QueueManager {
         for id in to_start.into_iter().take(slots_available) {
             if let Err(e) = self.start_download(id, None).await {
                 eprintln!("Failed to start queued download {}: {}", id, e);
+                if let Some(mut dl) = self.downloads.get_mut(&id) {
+                    dl.status = DownloadStatus::Failed;
+                    dl.error = Some(format!("Failed to start: {}", e));
+                    let _ = queries::update_download(&self.db_pool, &*dl).await;
+                }
             }
         }
         
@@ -804,6 +809,36 @@ impl QueueManager {
             dl.netscape_cookies = None;
         }
         self.download_metrics.remove(id);
+    }
+
+    pub async fn move_siphoned_file(&self, source: &str, destination: &str, daemon_id: Option<String>) -> Result<()> {
+        let src_path = std::path::Path::new(source);
+        let dest_path = std::path::Path::new(destination);
+        
+        // Ensure destination parent directory exists
+        if let Some(parent) = dest_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        
+        // Try renaming first, fallback to copy + delete across mount points
+        if tokio::fs::rename(&src_path, &dest_path).await.is_err() {
+            tokio::fs::copy(&src_path, &dest_path).await?;
+            let _ = tokio::fs::remove_file(&src_path).await;
+        }
+        
+        if let Some(id_str) = daemon_id {
+            if let Ok(id) = uuid::Uuid::parse_str(&id_str) {
+                let filename = dest_path.file_name().map(|f| f.to_string_lossy().to_string());
+                let size = tokio::fs::metadata(&dest_path).await.map(|m| m.len()).ok();
+                self.mark_download_done(&id, filename, size).await;
+                
+                // Persist update to DB immediately
+                if let Some(dl) = self.downloads.get(&id) {
+                    let _ = crate::db::queries::update_download(&self.db_pool, &*dl).await;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub async fn handle_siphon_chunk(

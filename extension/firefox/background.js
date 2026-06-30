@@ -65,11 +65,13 @@ function isBlacklisted(url) {
 
 let nativePort = null;
 let pendingNativeRequests = [];
+let reconnectDelay = 2000;
 
 function connectNative() {
     nativePort = chrome.runtime.connectNative('com.jadm.jadm');
     nativePort.onMessage.addListener((msg) => {
         console.log("[JADMan Native] Received:", msg);
+        reconnectDelay = 2000; // Reset delay on successful message exchange
         if (pendingNativeRequests.length > 0) {
             const resolver = pendingNativeRequests.shift();
             resolver(msg);
@@ -77,14 +79,20 @@ function connectNative() {
     });
     nativePort.onDisconnect.addListener(() => {
         const err = chrome.runtime.lastError ? chrome.runtime.lastError.message : "No error message";
-        console.log(`[JADMan Native] Disconnected. Error: ${err}. Reconnecting in 2s...`);
+        console.log(`[JADMan Native] Disconnected. Error: ${err}. Reconnecting in ${reconnectDelay / 1000}s...`);
         nativePort = null;
-        setTimeout(connectNative, 2000);
+        setTimeout(connectNative, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000); // Exponential backoff capped at 30s
     });
 }
 connectNative();
 
 function sendNativeMessage(msg) {
+    if (!nativePort) {
+        console.log("[JADMan Native] Port disconnected. Attempting immediate reconnection...");
+        reconnectDelay = 2000;
+        connectNative();
+    }
     if (nativePort) {
         nativePort.postMessage(msg);
     } else {

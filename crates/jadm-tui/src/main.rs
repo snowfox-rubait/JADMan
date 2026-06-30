@@ -17,17 +17,39 @@ use jadm_common::protocol::{Request, Response};
 use anyhow::Result;
 use tokio::time::{interval, Duration};
 
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen, crossterm::cursor::Show);
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Setup panic hook to restore terminal on panic
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen, crossterm::cursor::Show);
+        original_hook(panic_info);
+    }));
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
+    
+    let _guard = TerminalGuard;
+    
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     // Resolve socket path dynamically in a cross-platform manner
-    let proj_dirs = directories::ProjectDirs::from("com", "jadm", "jadman").unwrap();
+    let proj_dirs = directories::ProjectDirs::from("com", "jadm", "jadm").unwrap();
     let socket_path = proj_dirs.runtime_dir()
         .map(|d| d.join("jadm.sock"))
         .unwrap_or_else(|| {
@@ -59,8 +81,9 @@ async fn main() -> Result<()> {
                         // Unexpected response variant, still connected
                         app.connected = true;
                     }
-                    Err(_) => {
+                    Err(e) => {
                         app.connected = false;
+                        eprintln!("TUI RPC connection error: {:?}", e);
                         // Don't crash — keep running so user sees "Disconnected"
                     }
                 }

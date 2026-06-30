@@ -230,6 +230,21 @@ impl UnixRpcServer {
                             }
                             Response::Ok { status: "Float triggered".to_string(), id: None, folder: None }
                         }
+                        Request::MoveFile { source, destination, daemon_id } => {
+                            match queue_manager.move_siphoned_file(&source, &destination, daemon_id).await {
+                                Ok(_) => Response::Ok { status: "File moved successfully".to_string(), id: None, folder: None },
+                                Err(e) => Response::Error { error: e.to_string() },
+                            }
+                        }
+                        Request::GetDownload { id } => {
+                            if let Some(view) = queue_manager.get_download(&id) {
+                                Response::Single {
+                                    download: Box::new(view)
+                                }
+                            } else {
+                                Response::Error { error: format!("Download not found: {}", id) }
+                            }
+                        }
                         _ => Response::Error { error: "Command not implemented over Unix socket yet".to_string() },
                     };
 
