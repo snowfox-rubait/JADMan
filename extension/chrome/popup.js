@@ -285,6 +285,9 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
             daemonId: daemonId,
             filename: "captured_stream.mp4",
             url: url
+        }).catch((e) => {
+            console.error("[JADMan Popup] Failed to send start_segment_recording:", e);
+            alert("Failed to start segment recording in tab. Is the page fully loaded?");
         });
 
         statusDiv.innerText = `✅ Segment Recording started in tab.`;
@@ -351,12 +354,14 @@ document.getElementById("downloadBtn").addEventListener("click", async () => {
             return;
         }
 
-        // 3. Send message to content script of the tab to start canvas recording
         chrome.tabs.sendMessage(targetTabId, {
             action: "start_webgl_capture",
             daemonId: daemonId,
             folder: targetFolder,
             url: url
+        }).catch((e) => {
+            console.error("[JADMan Popup] Failed to send start_webgl_capture:", e);
+            alert("Failed to start WebGL capture in tab. Is the page fully loaded?");
         });
 
         statusDiv.innerText = `✅ WebGL Canvas Capture started in tab.`;

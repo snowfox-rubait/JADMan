@@ -226,6 +226,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     url: url,
                     daemonId: daemonId,
                     folder: folder
+                }).catch((e) => {
+                    console.error("[JADMan BrowserFetch] Failed to send message to tab content script:", e);
+                    sendNativeMessage({ cmd: "StopDownload", id: daemonId });
                 });
             } else {
                 console.error("[JADMan BrowserFetch] No active tab found to run fetch in.");
