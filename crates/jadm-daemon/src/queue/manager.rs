@@ -461,6 +461,16 @@ impl QueueManager {
                                         dl_entry.status = DownloadStatus::Done;
                                         dl_entry.completed_at = Some(Utc::now());
                                         dl_entry.cookies = None;
+                                        
+                                        // Update size from actual file on disk if missing
+                                        if let Some(ref fname) = dl_entry.filename {
+                                            let path = std::path::Path::new(&dl_entry.folder).join(fname);
+                                            if let Ok(metadata) = std::fs::metadata(&path) {
+                                                let size = metadata.len();
+                                                dl_entry.size = Some(size);
+                                                dl_entry.downloaded = size;
+                                            }
+                                        }
                                     }
                                     res => {
                                         let err_desc = match res {
@@ -517,6 +527,16 @@ impl QueueManager {
                                         if dl_entry.filename.is_none()
                                             && let Some(fname) = dl_entry.url.split('/').next_back().map(|s| s.split('?').next().unwrap_or(s)) {
                                                 dl_entry.filename = Some(fname.to_string());
+                                        }
+                                        
+                                        // Update size from actual file on disk if missing
+                                        if let Some(ref fname) = dl_entry.filename {
+                                            let path = std::path::Path::new(&dl_entry.folder).join(fname);
+                                            if let Ok(metadata) = std::fs::metadata(&path) {
+                                                let size = metadata.len();
+                                                dl_entry.size = Some(size);
+                                                dl_entry.downloaded = size;
+                                            }
                                         }
                                     }
                                     _ => {

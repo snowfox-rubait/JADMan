@@ -81,9 +81,8 @@ async fn main() -> Result<()> {
                         // Unexpected response variant, still connected
                         app.connected = true;
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         app.connected = false;
-                        eprintln!("TUI RPC connection error: {:?}", e);
                         // Don't crash — keep running so user sees "Disconnected"
                     }
                 }

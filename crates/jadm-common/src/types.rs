@@ -115,8 +115,10 @@ pub struct DownloadView {
 impl DownloadView {
     pub fn new(download: Download, rate_bytes: u64, eta_secs: Option<u64>) -> Self {
         let mut percent = 0;
-        if let Some(size) = download.size.filter(|&s| s > 0) {
-            percent = ((download.downloaded as f64 / size as f64) * 100.0) as u8;
+        if download.status == DownloadStatus::Done {
+            percent = 100;
+        } else if let Some(size) = download.size.filter(|&s| s > 0) {
+            percent = ((download.downloaded as f64 / size as f64) * 100.0).min(100.0) as u8;
         }
         Self {
             download,
