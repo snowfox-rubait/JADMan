@@ -92,6 +92,30 @@ async fn main() -> Result<()> {
     // 1. Initialize DB
     let proj_dirs = ProjectDirs::from("com", "jadm", "jadm")
         .ok_or_else(|| anyhow::anyhow!("Could not determine project directories"))?;
+
+    // Check if another instance of the daemon is already running
+    let check_socket_path = proj_dirs.runtime_dir()
+        .map(|d| d.join("jadm.sock"))
+        .unwrap_or_else(|| {
+            #[cfg(unix)]
+            { std::path::PathBuf::from("/tmp/jadm.sock") }
+            #[cfg(not(unix))]
+            { std::env::temp_dir().join("jadm.sock") }
+        });
+    #[cfg(unix)]
+    {
+        if tokio::net::UnixStream::connect(&check_socket_path).await.is_ok() {
+            println!("Another instance of jadm-daemon is already running.");
+            return Ok(());
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if tokio::net::TcpStream::connect("127.0.0.1:6245").await.is_ok() {
+            println!("Another instance of jadm-daemon is already running.");
+            return Ok(());
+        }
+    }
     let data_dir = proj_dirs.data_dir();
     fs::create_dir_all(data_dir)?;
     
