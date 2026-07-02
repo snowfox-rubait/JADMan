@@ -686,6 +686,71 @@ chrome.runtime.onMessage.addListener((message) => {
         });
 
         sendResponse({ links: links.slice(0, 50) });
+    } else if (message.action === "start_browser_fetch") {
+        console.log("[JADMan Content Script] Received start_browser_fetch message:", message);
+        const { url, daemonId, folder } = message;
+        (async () => {
+            try {
+                const response = await nativeFetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+                const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
+                const contentDisp = response.headers.get('content-disposition') || '';
+                
+                let filename = 'download';
+                if (contentDisp) {
+                    const match = contentDisp.match(/filename\*?=["']?(?:UTF-8'')?([^"';\n]+)["']?/i);
+                    if (match && match[1]) {
+                        filename = decodeURIComponent(match[1]);
+                    } else {
+                        const matchSimple = contentDisp.match(/filename=["']?([^"';\n]+)["']?/i);
+                        if (matchSimple && matchSimple[1]) {
+                            filename = matchSimple[1];
+                        }
+                    }
+                }
+                if (filename === 'download') {
+                    filename = url.split('/').pop().split('?')[0] || 'download';
+                }
+                
+                const reader = response.body.getReader();
+                let chunkIndex = 0;
+                let downloaded = 0;
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    const isLast = done;
+                    const chunkData = done ? new Uint8Array(0) : value;
+                    
+                    chrome.runtime.sendMessage({
+                        cmd: "SiphonChunk",
+                        daemon_id: daemonId,
+                        chunk_index: chunkIndex,
+                        is_last: isLast,
+                        filename: filename,
+                        total_size: totalSize,
+                        data: Array.from(chunkData)
+                    });
+                    
+                    if (done) break;
+                    chunkIndex++;
+                    downloaded += chunkData.length;
+                }
+                console.log(`[JADMan Content Script] Browser fetch download completed: ${filename}`);
+            } catch(err) {
+                console.error("[JADMan Content Script] Browser fetch error:", err);
+                chrome.runtime.sendMessage({ cmd: "StopDownload", id: daemonId });
+            }
+        })();
+    } else if (message.action === "check_inspector_state") {
+        sendResponse({ active: typeof inspectorOverlay !== 'undefined' && inspectorOverlay !== null });
+    } else if (message.action === "toggle_element_inspector") {
+        setupElementInspector(message.active);
+        sendResponse({ success: true });
+    } else if (message.action === "force_preload_streams") {
+        forcePreloadStreams();
+        sendResponse({ success: true });
     }
 });
 
@@ -858,6 +923,7 @@ function startRecordingWebGL(canvas, message) {
 
 async function uploadWebGLChunk(daemonId, filename, chunkIndex, isLast, arrayBuffer) {
     try {
+        const DAEMON_URL = "http://127.0.0.1:6246";
         console.log("[JADMan Content Script] Uploading WebGL chunk to daemon...", chunkIndex, "Length:", arrayBuffer.byteLength);
         await chrome.runtime.sendMessage({
             cmd: "SiphonChunk",
@@ -1033,3 +1099,120 @@ nativeAddEventListener.call(window, "load", () => { scanMedia(); });
 nativeAddEventListener.call(document, "DOMContentLoaded", () => { scanMedia(); });
 nativeAddEventListener.call(window, "yt-navigate-finish", () => { scanMedia(); });
 nativeAddEventListener.call(window, "popstate", () => { setTimeout(scanMedia, 500); });
+
+// ==========================================
+// ELEMENT INSPECTOR AND BUFFER PRELOADER
+// ==========================================
+let inspectorOverlay = null;
+let hoveredElement = null;
+
+function setupElementInspector(active) {
+    if (!active) {
+        removeInspectorListeners();
+        return;
+    }
+    
+    document.addEventListener("mouseover", handleInspectorMouseOver, true);
+    document.addEventListener("mouseout", handleInspectorMouseOut, true);
+    document.addEventListener("click", handleInspectorClick, true);
+    
+    if (!inspectorOverlay) {
+        inspectorOverlay = document.createElement("div");
+        inspectorOverlay.style.cssText = `position: absolute; pointer-events: none; z-index: 2147483647; border: 2px dashed #00ff66; background: rgba(0, 255, 102, 0.15); box-shadow: 0 0 12px rgba(0,255,0,0.4); transition: all 0.05s; display: none;`;
+        document.body.appendChild(inspectorOverlay);
+    }
+}
+
+function removeInspectorListeners() {
+    document.removeEventListener("mouseover", handleInspectorMouseOver, true);
+    document.removeEventListener("mouseout", handleInspectorMouseOut, true);
+    document.removeEventListener("click", handleInspectorClick, true);
+    if (inspectorOverlay) {
+        inspectorOverlay.remove();
+        inspectorOverlay = null;
+    }
+    hoveredElement = null;
+}
+
+function handleInspectorMouseOver(e) {
+    const el = e.target;
+    if (el === inspectorOverlay || el.id === 'jadman-menu' || el.closest('x-jadman-wrap')) return;
+    
+    hoveredElement = el;
+    const rect = el.getBoundingClientRect();
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    
+    inspectorOverlay.style.left = (rect.left + scrollLeft) + "px";
+    inspectorOverlay.style.top = (rect.top + scrollTop) + "px";
+    inspectorOverlay.style.width = rect.width + "px";
+    inspectorOverlay.style.height = rect.height + "px";
+    inspectorOverlay.style.display = "block";
+}
+
+function handleInspectorMouseOut(e) {
+    if (e.target === hoveredElement) {
+        inspectorOverlay.style.display = "none";
+    }
+}
+
+function handleInspectorClick(e) {
+    if (!hoveredElement) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const el = hoveredElement;
+    
+    // Attempt to extract source
+    let sourceUrl = el.src || el.currentSrc;
+    if (!sourceUrl && el.tagName === "VIDEO") {
+        const firstSrc = el.querySelector("source");
+        if (firstSrc) sourceUrl = firstSrc.src;
+    }
+    
+    if (!sourceUrl) {
+        // Look inside close children
+        const video = el.querySelector("video, audio");
+        if (video) sourceUrl = video.src || video.currentSrc;
+    }
+    
+    removeInspectorListeners();
+    chrome.runtime.sendMessage({ action: "toggle_element_inspector", active: false });
+    
+    const finalUrl = sourceUrl || window.location.href;
+    const mime = el.tagName === "VIDEO" ? "video/mp4" : (el.tagName === "AUDIO" ? "audio/mpeg" : null);
+    
+    chrome.runtime.sendMessage({
+        action: "request_download",
+        url: finalUrl,
+        mime: mime
+    });
+}
+
+function forcePreloadStreams() {
+    const mediaElements = document.querySelectorAll("video, audio");
+    mediaElements.forEach(el => {
+        if (!el.duration || isNaN(el.duration)) {
+            el.play().catch(() => {});
+            return;
+        }
+        
+        const origTime = el.currentTime;
+        let step = el.duration / 30;
+        let checkIdx = 0;
+        
+        console.log(`[JADMan Content] Aggressively preloading stream of duration: ${el.duration}`);
+        
+        const interval = setInterval(() => {
+            if (checkIdx > 30) {
+                clearInterval(interval);
+                el.currentTime = origTime;
+                console.log("[JADMan Content] Stream preload seeks completed.");
+                return;
+            }
+            
+            el.currentTime = checkIdx * step;
+            checkIdx++;
+        }, 150);
+    });
+}

@@ -217,6 +217,11 @@ impl UnixRpcServer {
                                 Err(e) => Response::Error { error: e.to_string() },
                             }
                         }
+                        Request::CdmGetKeys => {
+                            let keys_path = "/tmp/jadm_cdm_keys.txt";
+                            let content = std::fs::read_to_string(keys_path).unwrap_or_default();
+                            Response::Ok { status: "Keys read".to_string(), id: None, folder: Some(content) }
+                        }
                         Request::Float => {
                             let cmd = config.hooks.on_float_toggle.clone();
                             if !cmd.is_empty() {

@@ -57,6 +57,16 @@ function setActiveModeUI(mode) {
 }
 
 // Bind Action Buttons
+document.getElementById('open-toolbox-btn').addEventListener('click', () => {
+  if (activeTabId !== null) {
+    chrome.windows.create({
+      url: `toolbox.html?tabId=${activeTabId}`,
+      type: "popup", width: 800, height: 600, focused: true
+    });
+    window.close();
+  }
+});
+
 document.getElementById('open-grabber-btn').addEventListener('click', () => {
   if (activeTabId !== null) {
     chrome.runtime.sendMessage({ action: "open_grabber_for_tab", tabId: activeTabId });

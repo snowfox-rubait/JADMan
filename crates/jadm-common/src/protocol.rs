@@ -93,6 +93,7 @@ pub enum Request {
         license_url: String,
         headers: Option<std::collections::HashMap<String, String>>,
     },
+    CdmGetKeys,
     Float,
 }
 

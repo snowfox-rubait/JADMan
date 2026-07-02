@@ -472,6 +472,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             priority: s.priority
         }));
         sendResponse({ urls: list, siphoned: siphoned });
+    } else if (message.action === "launch_cdm_extractor") {
+        sendNativeMessage({ CdmStart: { url: "", license_url: "", headers: null } });
+        sendResponse({ success: true });
+    } else if (message.action === "read_cdm_keys_log") {
+        pendingNativeRequests.push((msg) => {
+            sendResponse({ content: msg?.folder || "" });
+        });
+        sendNativeMessage({ CdmGetKeys: null });
+    } else if (message.action === "grab_media_for_tab") {
+        const tid = message.tabId;
+        chrome.scripting.executeScript({
+            target: { tabId: tid },
+            func: () => {
+                const links = [];
+                document.querySelectorAll("video, audio, source").forEach(m => {
+                    const src = m.src || m.currentSrc;
+                    if (src && !src.startsWith("blob:")) links.push({url: src, text: "Media Stream"});
+                });
+                document.querySelectorAll("a").forEach(a => {
+                    if (!a.href) return;
+                    const lower = a.href.toLowerCase();
+                    const isMedia = [".mp4", ".mkv", ".mp3", ".pdf", ".zip", ".rar", ".7z", ".exe"].some(ext => lower.includes(ext));
+                    if (isMedia) links.push({ url: a.href, text: a.innerText.trim() || a.href.split('/').pop() });
+                });
+                return links;
+            }
+        }, (results) => {
+            const dataList = results?.[0]?.result || [];
+            chrome.storage.local.set({ grabbedLinks: dataList }, () => {
+                triggerFloat();
+                chrome.windows.create({ url: `grabber.html?tabId=${tid}`, type: "popup", width: 800, height: 600 });
+            });
+        });
+    } else if (message.action === "grab_assets_for_tab") {
+        const tid = message.tabId;
+        chrome.scripting.executeScript({
+            target: { tabId: tid },
+            func: () => {
+                const links = [];
+                document.querySelectorAll("img").forEach(i => { if (i.src && !i.src.startsWith("data:")) links.push({url: i.src, text: "Image Asset"}); });
+                document.querySelectorAll("link[rel='stylesheet']").forEach(l => { if (l.href) links.push({url: l.href, text: "CSS Stylesheet"}); });
+                document.querySelectorAll("script").forEach(s => { if (s.src) links.push({url: s.src, text: "JS Script"}); });
+                return links;
+            }
+        }, (results) => {
+            const dataList = results?.[0]?.result || [];
+            chrome.storage.local.set({ grabbedLinks: dataList }, () => {
+                triggerFloat();
+                chrome.windows.create({ url: `grabber.html?tabId=${tid}`, type: "popup", width: 800, height: 600 });
+            });
+        });
     }
     return true;
 });
@@ -480,6 +531,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function setupContextMenus() {
     chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({ id: "jadman-toolbox", title: "📥 JADMan Toolbox", contexts: ["all"] });
+        chrome.contextMenus.create({ id: "jadman-open-toolbox", title: "🛠️ Open Advanced Toolbox", parentId: "jadman-toolbox", contexts: ["all"] });
         chrome.contextMenus.create({ id: "jadman-download-target", title: "Download this Media/Link", parentId: "jadman-toolbox", contexts: ["link", "image", "video", "audio"] });
         chrome.contextMenus.create({ id: "jadman-download-selection", title: "Download Selected Links", parentId: "jadman-toolbox", contexts: ["selection"] });
         chrome.contextMenus.create({ id: "jadman-grab-media", title: "Grab all Page Media (Videos/Audio/Docs)", parentId: "jadman-toolbox", contexts: ["all"] });
@@ -496,6 +548,11 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === "jadman-open-toolbox") {
+        chrome.windows.create({ url: `toolbox.html?tabId=${tab.id}`, type: "popup", width: 800, height: 600 });
+        return;
+    }
+
     if (info.menuItemId.startsWith("jadman-pos-")) {
         const position = info.menuItemId.replace("jadman-pos-", "");
         chrome.storage.local.set({ buttonPosition: position });
