@@ -20,16 +20,18 @@ if (typeof chrome !== 'undefined' && chrome.runtime) {
         if (!chrome.runtime?.id) return;
         try {
             if (typeof callback === 'function') {
-                originalSendMessage.call(chrome.runtime, message, (response) => {
+                return originalSendMessage.call(chrome.runtime, message, (response) => {
                     const err = chrome.runtime.lastError;
                     if (!err) {
                         callback(response);
                     }
                 });
             } else {
-                originalSendMessage.call(chrome.runtime, message, () => {
-                    const _ = chrome.runtime.lastError;
-                });
+                const p = originalSendMessage.call(chrome.runtime, message);
+                if (p && typeof p.catch === 'function') {
+                    return p.catch(() => {});
+                }
+                return p;
             }
         } catch(e) {}
     };
